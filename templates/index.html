@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GHOST · Sarcasm Subsystem</title>
+
+<style>
+:root {
+  --bg-main: #0b0d0c;
+  --bg-panel: #101312;
+  --bg-input: #0c0f0e;
+
+  --text-main: #e6e6e6;
+  --text-muted: #a5a5a5;
+  --text-dim: #6f6f6f;
+
+  --accent: #4caf7d;
+  --accent-soft: rgba(76,175,125,0.12);
+
+  --border: #1f2422;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg-main);
+  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+  color: var(--text-main);
+}
+
+/* ===============================
+   LAYOUT
+   =============================== */
+.system-shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* HEADER */
+.system-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.system-header .title {
+  font-size: 0.75rem;
+  letter-spacing: 0.25em;
+}
+
+.system-header .status {
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  color: var(--accent);
+}
+
+/* STREAM */
+.stream {
+  flex: 1;
+  padding: 16px 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* MESSAGE ENTRIES */
+.entry {
+  max-width: 70%;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.entry.user {
+  align-self: flex-end;
+  text-align: right;
+}
+
+.entry.system {
+  align-self: flex-start;
+  text-align: left;
+}
+
+.block {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+/* TELEMETRY */
+.telemetry {
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.telemetry.user {
+  align-self: flex-end;
+  text-align: right;
+}
+
+.telemetry.system {
+  align-self: flex-start;
+  text-align: left;
+}
+
+/* INPUT */
+.input-bar {
+  border-top: 1px solid var(--border);
+  background: var(--bg-input);
+  padding: 12px;
+  display: flex;
+  gap: 10px;
+}
+
+input {
+  flex: 1;
+  background: #090b0a;
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  padding: 10px 12px;
+  font-size: 0.8rem;
+  outline: none;
+}
+
+input::placeholder {
+  color: var(--text-dim);
+}
+
+button {
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 8px 14px;
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--accent-soft);
+}
+
+/* SCROLL */
+.stream::-webkit-scrollbar { width: 4px; }
+.stream::-webkit-scrollbar-thumb { background: var(--border); }
+</style>
+</head>
+
+<body>
+
+<div class="system-shell">
+
+  <div class="system-header">
+    <div class="title">GHOST · SARCASM SUBSYSTEM</div>
+    <div class="status">ONLINE</div>
+  </div>
+
+  <div id="stream" class="stream">
+    <div class="entry system">
+      <div class="block">System initialized.</div>
+    </div>
+  </div>
+
+  <div class="input-bar">
+    <input id="input" placeholder="input message…" autocomplete="off">
+    <button onclick="send()">SEND</button>
+  </div>
+
+</div>
+
+<script>
+const sessionId = Math.random().toString(36).slice(2);
+let lastBotMessage = "";
+
+const stream = document.getElementById("stream");
+const input = document.getElementById("input");
+
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter") send();
+});
+
+function addEntry(text, role) {
+  const entry = document.createElement("div");
+  entry.className = `entry ${role}`;
+
+  const block = document.createElement("div");
+  block.className = "block";
+  block.textContent = text;
+
+  entry.appendChild(block);
+  stream.appendChild(entry);
+  stream.scrollTop = stream.scrollHeight;
+}
+
+function addTelemetry(text, role) {
+  const t = document.createElement("div");
+  t.className = `telemetry ${role}`;
+  t.textContent = text;
+  stream.appendChild(t);
+  stream.scrollTop = stream.scrollHeight;
+}
+
+async function send() {
+  const text = input.value.trim();
+  if (!text) return;
+
+  // USER MESSAGE
+  addEntry(text, "user");
+  input.value = "";
+
+  try {
+    const res = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: text,
+        session_id: sessionId,
+        last_bot_message: lastBotMessage
+      })
+    });
+
+    const data = await res.json();
+
+    // USER TELEMETRY (RIGHT WALL)
+    if (data.user_analysis.is_sarcastic) {
+      addTelemetry(
+        `user · sarcastic · ${data.user_analysis.percent}%`,
+        "user"
+      );
+    } else {
+      addTelemetry(`user · genuine`, "user");
+    }
+
+    // SYSTEM MESSAGE
+    addEntry(data.reply, "system");
+    lastBotMessage = data.reply;
+
+    // SYSTEM TELEMETRY (LEFT WALL)
+    if (data.bot_analysis.is_sarcastic) {
+      addTelemetry(
+        `system · sarcastic · ${data.bot_analysis.percent}%`,
+        "system"
+      );
+    }
+
+  } catch {
+    addEntry("System communication failure.", "system");
+  }
+}
+</script>
+
+</body>
+</html>
